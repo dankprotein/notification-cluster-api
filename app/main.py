@@ -13,9 +13,15 @@ app = FastAPI()
 MONGO_URI = os.getenv("MONGODB_URI")
 if not MONGO_URI:
     raise RuntimeError("MONGODB_URI environment variable not set")
-client = MongoClient(MONGO_URI)
-db = client["notification_db"]
-notifications_collection = db["notifications"]
+
+try:
+    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+    db = client["notification_db"]
+    notifications_collection = db["notifications"]
+    # Trigger initial connection to catch misconfig
+    client.admin.command('ping')
+except Exception as e:
+    raise RuntimeError(f"Failed to connect to MongoDB: {str(e)}")
 
 # Pydantic models
 class Notification(BaseModel):
@@ -48,9 +54,12 @@ def send_notification(notification: Notification):
 
 @app.get("/users/{user_id}/notifications")
 def get_user_notifications(user_id: str):
-    results = notifications_collection.find({"user_id": user_id})
-    notifications = [
-        {"id": str(n["_id"]), "message": n["message"], "type": n["notification_type"]}
-        for n in results
-    ]
-    return {"notifications": notifications}
+    try:
+        results = notifications_collection.find({"user_id": user_id})
+        notifications = [
+            {"id": str(n["_id"]), "message": n["message"], "type": n["notification_type"]}
+            for n in results
+        ]
+        return {"notifications": notifications}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch notifications: {str(e)}")
