@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-pymongo[srv]
-bson
+pymongo==3.12.3
+bson==1.12.3
 pika
 python-dotenv
