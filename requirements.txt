@@ -1,5 +1,5 @@
-python-dotenv
-pymongo[srv]==3.12.3
-pika
 fastapi
-uvicorn
+uvicorn[standard]
+pymongo[srv]==4.6.1
+certifi
+python-dotenv
