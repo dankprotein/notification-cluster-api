@@ -1,5 +1,5 @@
-fastapi
-uvicorn
+python-dotenv
 pymongo[srv]==3.12.3
 pika
-python-dotenv
+fastapi
+uvicorn

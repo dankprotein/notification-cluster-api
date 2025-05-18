@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: notification-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port 10000
+    plan: free
+    envVars:
+      - key: MONGODB_URI
+        sync: false
+      - key: RABBITMQ_URL
+        sync: false
+
+  - type: worker
+    name: notification-worker
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python worker/consumer.py
+    plan: free
+    envVars:
+      - key: MONGODB_URI
+        sync: false
+      - key: RABBITMQ_URL
+        sync: false
