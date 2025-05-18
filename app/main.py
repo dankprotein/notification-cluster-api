@@ -11,16 +11,11 @@ app = FastAPI()
 
 # MongoDB setup
 MONGO_URI = os.getenv("MONGODB_URI")
+if not MONGO_URI:
+    raise RuntimeError("MONGODB_URI environment variable not set")
 client = MongoClient(MONGO_URI)
 db = client["notification_db"]
 notifications_collection = db["notifications"]
-
-# RabbitMQ setup
-RABBITMQ_URL = os.getenv("RABBITMQ_URL")
-params = pika.URLParameters(RABBITMQ_URL)
-connection = pika.BlockingConnection(params)
-channel = connection.channel()
-channel.queue_declare(queue='notification_queue', durable=True)
 
 # Pydantic models
 class Notification(BaseModel):
@@ -30,17 +25,32 @@ class Notification(BaseModel):
 
 @app.post("/notifications")
 def send_notification(notification: Notification):
-    message = notification.dict()
-    channel.basic_publish(
-        exchange='',
-        routing_key='notification_queue',
-        body=json.dumps(message),
-        properties=pika.BasicProperties(delivery_mode=2),
-    )
-    return {"status": "queued"}
+    RABBITMQ_URL = os.getenv("RABBITMQ_URL")
+    if not RABBITMQ_URL:
+        raise HTTPException(status_code=500, detail="RABBITMQ_URL not set")
+
+    try:
+        connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
+        channel = connection.channel()
+        channel.queue_declare(queue='notification_queue', durable=True)
+
+        message = notification.dict()
+        channel.basic_publish(
+            exchange='',
+            routing_key='notification_queue',
+            body=json.dumps(message),
+            properties=pika.BasicProperties(delivery_mode=2),
+        )
+        connection.close()
+        return {"status": "queued"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to publish message: {str(e)}")
 
 @app.get("/users/{user_id}/notifications")
 def get_user_notifications(user_id: str):
     results = notifications_collection.find({"user_id": user_id})
-    notifications = [{"id": str(n["_id"]), "message": n["message"], "type": n["notification_type"]} for n in results]
+    notifications = [
+        {"id": str(n["_id"]), "message": n["message"], "type": n["notification_type"]}
+        for n in results
+    ]
     return {"notifications": notifications}
