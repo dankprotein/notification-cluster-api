@@ -11,12 +11,16 @@ app = FastAPI()
 
 # MongoDB setup
 MONGO_URI = os.getenv("MONGODB_URI")
+if not MONGO_URI:
+    raise RuntimeError("MONGODB_URI environment variable not set")
 client = MongoClient(MONGO_URI)
 db = client["notification_db"]
 notifications_collection = db["notifications"]
 
 # RabbitMQ setup
 RABBITMQ_URL = os.getenv("RABBITMQ_URL")
+if not RABBITMQ_URL:
+    raise RuntimeError("RABBITMQ_URL environment variable not set")
 params = pika.URLParameters(RABBITMQ_URL)
 connection = pika.BlockingConnection(params)
 channel = connection.channel()
@@ -42,5 +46,8 @@ def send_notification(notification: Notification):
 @app.get("/users/{user_id}/notifications")
 def get_user_notifications(user_id: str):
     results = notifications_collection.find({"user_id": user_id})
-    notifications = [{"id": str(n["_id"]), "message": n["message"], "type": n["notification_type"]} for n in results]
+    notifications = [
+        {"id": str(n["_id"]), "message": n["message"], "type": n["notification_type"]}
+        for n in results
+    ]
     return {"notifications": notifications}
