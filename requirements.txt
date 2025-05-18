@@ -3,3 +3,4 @@ uvicorn[standard]
 pymongo[srv]==4.6.1
 certifi
 python-dotenv
+pika
