@@ -6,6 +6,7 @@ from bson import ObjectId
 import os
 import pika
 import json
+import certifi  # Added for proper SSL cert bundle
 
 app = FastAPI()
 
@@ -15,7 +16,11 @@ if not MONGO_URI:
     raise RuntimeError("MONGODB_URI environment variable not set")
 
 try:
-    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+    client = MongoClient(
+        MONGO_URI,
+        serverSelectionTimeoutMS=5000,
+        tlsCAFile=certifi.where()  # Using certifi CA bundle
+    )
     db = client["notification_db"]
     notifications_collection = db["notifications"]
     # Trigger initial connection to catch misconfig
