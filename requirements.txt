@@ -1,5 +1,6 @@
 fastapi
 uvicorn
-pymongo
+pymongo[srv]
+bson
 pika
-gunicorn
+python-dotenv

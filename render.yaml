@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: notification-api
+    env: python
+    plan: free
+    buildCommand: pip install -r ../requirements.txt
+    startCommand: ./start.sh
+    envVars:
+      - key: MONGODB_URI
+        value: mongodb+srv://tushar:%400504Tushar@notification-cluster.mn2y47r.mongodb.net/?retryWrites=true&w=majority&appName=notification-cluster
+      - key: RABBITMQ_URL
+        value: amqps://vkyxoxfy:zdUO2NMkqqumOD009wagfMP4isc-MeV3@puffin.rmq2.cloudamqp.com/vkyxoxfy
+    rootDir: app
+
+  - type: worker
+    name: notification-worker
+    env: python
+    plan: free
+    buildCommand: pip install -r ../requirements.txt
+    startCommand: ./start.sh
+    envVars:
+      - key: MONGODB_URI
+        value: mongodb+srv://tushar:%400504Tushar@notification-cluster.mn2y47r.mongodb.net/?retryWrites=true&w=majority&appName=notification-cluster
+      - key: RABBITMQ_URL
+        value: amqps://vkyxoxfy:zdUO2NMkqqumOD009wagfMP4isc-MeV3@puffin.rmq2.cloudamqp.com/vkyxoxfy
+    rootDir: worker
