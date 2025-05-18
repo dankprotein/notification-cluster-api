@@ -1,5 +1,5 @@
 fastapi
 uvicorn
-pymongo==3.12.3
+pymongo[srv]==3.12.3
 pika
 python-dotenv
