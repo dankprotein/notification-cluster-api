@@ -17,18 +17,6 @@ client = MongoClient(MONGO_URI)
 db = client["notification_db"]
 notifications_collection = db["notifications"]
 
-<<<<<<< HEAD
-=======
-# RabbitMQ setup
-RABBITMQ_URL = os.getenv("RABBITMQ_URL")
-if not RABBITMQ_URL:
-    raise RuntimeError("RABBITMQ_URL environment variable not set")
-params = pika.URLParameters(RABBITMQ_URL)
-connection = pika.BlockingConnection(params)
-channel = connection.channel()
-channel.queue_declare(queue='notification_queue', durable=True)
-
->>>>>>> aaa80f6c01d1e39e60664a3c1ad15db64b1dbb86
 # Pydantic models
 class Notification(BaseModel):
     user_id: str
