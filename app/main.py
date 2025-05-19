@@ -1,16 +1,20 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, EmailStr
 from enum import Enum
 from typing import Optional
 from pymongo import MongoClient
 from bson import ObjectId
+from starlette.responses import RedirectResponse
 import os
 import pika
 import json
 import uuid
 import certifi
+import secrets
 
 app = FastAPI()
+security = HTTPBasic()
 
 # MongoDB setup
 MONGO_URI = os.getenv("MONGODB_URI")
@@ -43,8 +47,23 @@ class Notification(BaseModel):
     notification_type: NotificationType
     encoding: str = "utf-8"
 
+# Basic Auth validator
+def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
+    expected_username = os.getenv("BASIC_AUTH_USERNAME", "admin")
+    expected_password = os.getenv("BASIC_AUTH_PASSWORD", "secret")
+    correct_username = secrets.compare_digest(credentials.username, expected_username)
+    correct_password = secrets.compare_digest(credentials.password, expected_password)
+
+    if not (correct_username and correct_password):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return credentials.username
+
+@app.get("/", include_in_schema=False)
+def redirect_to_docs():
+    return RedirectResponse(url="/docs")
+
 @app.post("/notifications")
-def send_notification(notification: Notification):
+def send_notification(notification: Notification, _: str = Depends(authenticate)):
     RABBITMQ_URL = os.getenv("RABBITMQ_URL")
     if not RABBITMQ_URL:
         raise HTTPException(status_code=500, detail="RABBITMQ_URL not set")
@@ -71,16 +90,22 @@ def send_notification(notification: Notification):
         raise HTTPException(status_code=500, detail=f"Failed to publish message: {str(e)}")
 
 @app.get("/notifications/status")
-def get_notification_status(transaction_id: str = Query(..., description="Transaction ID")):
+def get_notification_status(
+    transaction_id: str = Query(..., description="Transaction ID"),
+    _: str = Depends(authenticate)
+):
     try:
         result = notifications_collection.find_one({"transaction_id": transaction_id})
-        if not result:
+        if result:
+            return {
+                "transaction_id": result["transaction_id"],
+                "status": "stored",
+                "to": result["to"],
+                "type": result["notification_type"]
+            }
+        else:
             raise HTTPException(status_code=404, detail="Notification not found")
-        return {
-            "transaction_id": result["transaction_id"],
-            "status": "stored",
-            "to": result["to"],
-            "type": result["notification_type"]
-        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch notification: {str(e)}")
