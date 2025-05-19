@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
 from enum import Enum
 from typing import Optional
@@ -10,7 +11,17 @@ import json
 import uuid
 import certifi
 
-app = FastAPI()
+# FastAPI app with metadata
+app = FastAPI(
+    title="Notification Service",
+    description="API to send and retrieve notifications via email, SMS, or in-app",
+    version="1.0.0"
+)
+
+# Root redirects to docs
+@app.get("/", include_in_schema=False)
+def root():
+    return RedirectResponse(url="/docs")
 
 # MongoDB setup
 MONGO_URI = os.getenv("MONGODB_URI")
@@ -43,7 +54,7 @@ class Notification(BaseModel):
     notification_type: NotificationType
     encoding: str = "utf-8"
 
-@app.post("/notifications")
+@app.post("/notifications", summary="Send a notification")
 def send_notification(notification: Notification):
     RABBITMQ_URL = os.getenv("RABBITMQ_URL")
     if not RABBITMQ_URL:
@@ -70,7 +81,7 @@ def send_notification(notification: Notification):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to publish message: {str(e)}")
 
-@app.get("/notifications/status")
+@app.get("/notifications/status", summary="Get notification status")
 def get_notification_status(transaction_id: str = Query(..., description="Transaction ID")):
     try:
         result = notifications_collection.find_one({"transaction_id": transaction_id})
