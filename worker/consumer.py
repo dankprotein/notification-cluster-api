@@ -32,4 +32,8 @@ def callback(ch, method, properties, body):
 channel.basic_qos(prefetch_count=1)
 channel.basic_consume(queue='notification_queue', on_message_callback=callback)
 print(" [*] Waiting for messages.")
-channel.start_consuming()
+
+# Ensure the consumer only starts when executed directly
+if __name__ == "__main__":
+    print(" [*] Starting consumer...")
+    channel.start_consuming()
