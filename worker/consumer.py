@@ -3,10 +3,11 @@ import json
 from pymongo import MongoClient
 import os
 import time
+import certifi
 
 # Setup MongoDB
 MONGO_URI = os.getenv("MONGODB_URI")
-client = MongoClient(MONGO_URI)
+client = MongoClient(MONGO_URI, tlsCAFile=certifi.where())
 db = client["notification_db"]
 notifications_collection = db["notifications"]
 
