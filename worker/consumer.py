@@ -1,86 +1,35 @@
-from fastapi import FastAPI, HTTPException, Query
-from pydantic import BaseModel, EmailStr
-from enum import Enum
-from typing import Optional
-from pymongo import MongoClient
-from bson import ObjectId
-import os
 import pika
 import json
-import uuid
+from pymongo import MongoClient
+import os
+import time
 import certifi
 
-app = FastAPI()
-
-# MongoDB setup
+# Setup MongoDB
 MONGO_URI = os.getenv("MONGODB_URI")
-if not MONGO_URI:
-    raise RuntimeError("MONGODB_URI environment variable not set")
+client = MongoClient(MONGO_URI, tlsCAFile=certifi.where())
+db = client["notification_db"]
+notifications_collection = db["notifications"]
 
-try:
-    client = MongoClient(
-        MONGO_URI,
-        serverSelectionTimeoutMS=5000,
-        tlsCAFile=certifi.where()
-    )
-    db = client["notification_db"]
-    notifications_collection = db["notifications"]
-    client.admin.command('ping')
-except Exception as e:
-    raise RuntimeError(f"Failed to connect to MongoDB: {str(e)}")
+# Setup RabbitMQ
+RABBITMQ_URL = os.getenv("RABBITMQ_URL")
+params = pika.URLParameters(RABBITMQ_URL)
+connection = pika.BlockingConnection(params)
+channel = connection.channel()
+channel.queue_declare(queue='notification_queue', durable=True)
 
-# Enum for notification types
-class NotificationType(str, Enum):
-    email = "email"
-    sms = "sms"
-    in_app = "in_app"
-
-# Pydantic model for request
-class Notification(BaseModel):
-    from_: EmailStr
-    to: EmailStr
-    message: str
-    notification_type: NotificationType
-    encoding: str = "utf-8"
-
-@app.post("/notifications")
-def send_notification(notification: Notification):
-    RABBITMQ_URL = os.getenv("RABBITMQ_URL")
-    if not RABBITMQ_URL:
-        raise HTTPException(status_code=500, detail="RABBITMQ_URL not set")
-
-    transaction_id = str(uuid.uuid4())
-    message = notification.dict()
-    message["transaction_id"] = transaction_id
-
+def callback(ch, method, properties, body):
     try:
-        connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
-        channel = connection.channel()
-        channel.queue_declare(queue='notification_queue', durable=True)
-
-        channel.basic_publish(
-            exchange='',
-            routing_key='notification_queue',
-            body=json.dumps(message),
-            properties=pika.BasicProperties(delivery_mode=2),
-        )
-        connection.close()
-
-        return {"transaction_id": transaction_id}
+        data = json.loads(body)
+        notifications_collection.insert_one(data)
+        print("Notification saved:", data)
+        ch.basic_ack(delivery_tag=method.delivery_tag)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to publish message: {str(e)}")
+        print("Error:", e)
+        time.sleep(5)
+        ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
-@app.get("/notifications/status")
-def get_notification_status(transaction_id: str = Query(..., description="Transaction ID")):
-    try:
-        result = notifications_collection.find_one({"transaction_id": transaction_id})
-        if not result:
-            raise HTTPException(status_code=404, detail="Notification not found")
-        return {
-            "transaction_id": result["transaction_id"],
-            "status": "stored",
-            "to": result["to"],
-            "type": result["notification_type"]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch notification: {str(e)}")
+channel.basic_qos(prefetch_count=1)
+channel.basic_consume(queue='notification_queue', on_message_callback=callback)
+print(" [*] Waiting for messages.")
+channel.start_consuming()
