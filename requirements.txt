@@ -1,6 +1,21 @@
+# Core framework
 fastapi
 uvicorn[standard]
+
+# MongoDB support
 pymongo[srv]==4.6.1
+motor  # Async MongoDB driver
 certifi
-python-dotenv
+
+# RabbitMQ
 pika
+
+# Environment variables
+python-dotenv
+
+# HTTP client (useful in async APIs)
+httpx
+
+# Testing
+pytest
+pytest-asyncio
