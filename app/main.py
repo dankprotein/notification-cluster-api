@@ -1,12 +1,14 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import List
+from fastapi import FastAPI, HTTPException, Query
+from pydantic import BaseModel, EmailStr
+from enum import Enum
+from typing import Optional
 from pymongo import MongoClient
 from bson import ObjectId
 import os
 import pika
 import json
-import certifi  # Added for proper SSL cert bundle
+import uuid
+import certifi
 
 app = FastAPI()
 
@@ -19,20 +21,27 @@ try:
     client = MongoClient(
         MONGO_URI,
         serverSelectionTimeoutMS=5000,
-        tlsCAFile=certifi.where()  # Using certifi CA bundle
+        tlsCAFile=certifi.where()
     )
     db = client["notification_db"]
     notifications_collection = db["notifications"]
-    # Trigger initial connection to catch misconfig
     client.admin.command('ping')
 except Exception as e:
     raise RuntimeError(f"Failed to connect to MongoDB: {str(e)}")
 
-# Pydantic models
+# Enum for notification types
+class NotificationType(str, Enum):
+    email = "email"
+    sms = "sms"
+    in_app = "in_app"
+
+# Pydantic model for request
 class Notification(BaseModel):
-    user_id: str
+    from_: EmailStr
+    to: EmailStr
     message: str
-    notification_type: str  # email, sms, in-app
+    notification_type: NotificationType
+    encoding: str = "utf-8"
 
 @app.post("/notifications")
 def send_notification(notification: Notification):
@@ -40,12 +49,15 @@ def send_notification(notification: Notification):
     if not RABBITMQ_URL:
         raise HTTPException(status_code=500, detail="RABBITMQ_URL not set")
 
+    transaction_id = str(uuid.uuid4())
+    message = notification.dict()
+    message["transaction_id"] = transaction_id
+
     try:
         connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
         channel = connection.channel()
         channel.queue_declare(queue='notification_queue', durable=True)
 
-        message = notification.dict()
         channel.basic_publish(
             exchange='',
             routing_key='notification_queue',
@@ -53,18 +65,22 @@ def send_notification(notification: Notification):
             properties=pika.BasicProperties(delivery_mode=2),
         )
         connection.close()
-        return {"status": "queued"}
+
+        return {"transaction_id": transaction_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to publish message: {str(e)}")
 
-@app.get("/users/{user_id}/notifications")
-def get_user_notifications(user_id: str):
+@app.get("/notifications/status")
+def get_notification_status(transaction_id: str = Query(..., description="Transaction ID")):
     try:
-        results = notifications_collection.find({"user_id": user_id})
-        notifications = [
-            {"id": str(n["_id"]), "message": n["message"], "type": n["notification_type"]}
-            for n in results
-        ]
-        return {"notifications": notifications}
+        result = notifications_collection.find_one({"transaction_id": transaction_id})
+        if not result:
+            raise HTTPException(status_code=404, detail="Notification not found")
+        return {
+            "transaction_id": result["transaction_id"],
+            "status": "stored",
+            "to": result["to"],
+            "type": result["notification_type"]
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch notifications: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch notification: {str(e)}")
